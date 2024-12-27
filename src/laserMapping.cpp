@@ -808,38 +808,42 @@ void h_share_model_photometric(state_ikfom &s, esekfom::dyn_share_datastruct<dou
 
 void h_share_combined(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_data)
 {
-    // Calculate Photometric Terms
+    // 计算光度误差项
     esekfom::dyn_share_datastruct<double> ekfom_data_photo;
-    timing::Timer photo_timer("update/photometric");
-    h_share_model_photometric(s, ekfom_data_photo);
-    photo_timer.Stop();
+    timing::Timer photo_timer("update/photometric");  // 开始计时光度误差的计算
+    h_share_model_photometric(s, ekfom_data_photo);   // 调用光度模型计算函数
+    photo_timer.Stop();  // 停止计时
 
-    // Calculate Point-to-Plane Terms
-    esekfom::dyn_share_datastruct<double> ekfom_data_geo = ekfom_data;
-    timing::Timer geo_timer("update/geometric");
-    h_share_model_geometric(s, ekfom_data_geo);
-    geo_timer.Stop();
+    // 计算几何误差项
+    esekfom::dyn_share_datastruct<double> ekfom_data_geo = ekfom_data;  // 创建一个副本，用于几何误差的计算
+    timing::Timer geo_timer("update/geometric");  // 开始计时几何误差的计算
+    h_share_model_geometric(s, ekfom_data_geo);   // 调用几何模型计算函数
+    geo_timer.Stop();  // 停止计时
 
+    // 计算总的误差项数：光度误差和几何误差项的总和
     int n_terms = ekfom_data_photo.h.rows() + ekfom_data_geo.h.rows();
 
-    if (ekfom_data_photo.h.rows() > 0) {
-        float lambda = photo_scale;
-        // Concatenate Photometric and Geometric Terms
-        ekfom_data.h_x = Eigen::MatrixXd::Zero(n_terms, 12); 
-        ekfom_data.h_x << ekfom_data_photo.h_x*lambda , ekfom_data_geo.h_x;
-        ekfom_data.h = Eigen::VectorXd::Zero(n_terms);
-        ekfom_data.h << ekfom_data_photo.h*lambda, ekfom_data_geo.h;
-    } else {
-        ekfom_data.h_x = ekfom_data_geo.h_x;
-        ekfom_data.h = ekfom_data_geo.h;
+    if (ekfom_data_photo.h.rows() > 0) {  // 如果光度误差项存在
+        float lambda = photo_scale;  // 光度误差的缩放因子
+
+        // 合并光度误差项和几何误差项
+        ekfom_data.h_x = Eigen::MatrixXd::Zero(n_terms, 12);  // 初始化增量矩阵
+        ekfom_data.h_x << ekfom_data_photo.h_x * lambda, ekfom_data_geo.h_x;  // 拼接增量矩阵
+        ekfom_data.h = Eigen::VectorXd::Zero(n_terms);  // 初始化误差向量
+        ekfom_data.h << ekfom_data_photo.h * lambda, ekfom_data_geo.h;  // 拼接误差向量
+    } else {  // 如果光度误差项不存在
+        ekfom_data.h_x = ekfom_data_geo.h_x;  // 只保留几何误差项
+        ekfom_data.h = ekfom_data_geo.h;  // 只保留几何误差项
     }
 
+    // 保存几何误差的增量矩阵的前三列，用于后续处理
     if (ekfom_data_geo.h_x.rows() > 0) {
-        h_geo_last = ekfom_data_geo.h_x.leftCols(3);
+        h_geo_last = ekfom_data_geo.h_x.leftCols(3);  // 保存几何误差的前三列
     } else {
-        h_geo_last.resize(0,0);
+        h_geo_last.resize(0, 0);  // 如果没有几何误差，清空
     }
 
+    // 如果总的误差项数为零，表示没有有效的数据，标记为无效
     if (n_terms == 0) {
         ekfom_data.valid = false;
     }
