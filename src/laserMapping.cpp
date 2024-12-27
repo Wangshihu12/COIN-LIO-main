@@ -680,6 +680,15 @@ void h_share_model_geometric(state_ikfom &s, esekfom::dyn_share_datastruct<doubl
     }
 }
 
+/**
+ * @brief 计算光度误差的雅可比矩阵，并将结果存储到ekfom数据结构中
+ *
+ * @param s 当前状态变量，包括位姿和速度等
+ * @param ekfom_data 存储光度误差和雅可比矩阵的结构
+ *
+ * 该函数主要用于计算光度误差以及相对于状态变量的雅可比矩阵。利用特征点及其补丁的强度值，与当前帧的图像进行对比，
+ * 得到光度误差，同时通过投影模型和几何变换计算误差相对于状态变量的雅可比。
+ */
 void h_share_model_photometric(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_data)
 {
     // 如果没有有效的特征点，输出警告并返回
@@ -690,83 +699,84 @@ void h_share_model_photometric(state_ikfom &s, esekfom::dyn_share_datastruct<dou
         return;
     }
 
-    // 获取当前图像的强度矩阵
+    // 获取当前帧图像的强度矩阵
     cv::Mat &img = current_frame.img_intensity;
 
-    // 一些参数初始化
-    const int marg_size = feature_manager->margin();           // 图像边缘大小（可能用于避免边缘效应）
-    const int marg_col = img.cols - marg_size;                 // 图像列数减去边缘大小
-    const int marg_row = img.rows - marg_size;                 // 图像行数减去边缘大小
+    // 初始化相关参数
+    const int marg_size = feature_manager->margin();           // 图像边缘大小
+    const int marg_col = img.cols - marg_size;                 // 有效列范围
+    const int marg_row = img.rows - marg_size;                 // 有效行范围
     const int patch_size = feature_manager->patchSize();       // 每个特征点的补丁大小
-    const int n_patch = patch_size * patch_size;               // 补丁中像素的数量
-    const int n_features = feature_manager->features().size(); // 特征点的数量
+    const int n_patch = patch_size * patch_size;               // 补丁中像素数量
+    const int n_features = feature_manager->features().size(); // 特征点数量
     const double min_range = feature_manager->minRange();      // 最小有效距离
     const double max_range = feature_manager->maxRange();      // 最大有效距离
 
-    // 计算所需的变换矩阵
-    M4D T_GI = M4D::Identity();                        // 初始化G到I的变换矩阵
+    // 计算从G到I帧的变换矩阵
+    M4D T_GI = M4D::Identity();
     T_GI.block<3, 3>(0, 0) = s.rot.toRotationMatrix(); // 设置旋转矩阵
     T_GI.block<3, 1>(0, 3) = s.pos;                    // 设置平移向量
-    M3D R_IG = T_GI.block<3, 3>(0, 0).transpose();     // 获取旋转矩阵的转置
+    M3D R_IG = T_GI.block<3, 3>(0, 0).transpose();     // 从I到G的旋转矩阵
 
-    // T_GL是从G到L的变换矩阵
+    // 从G到L帧的变换矩阵
     M4D T_GL = T_GI * T_IL;
     M4D T_LG = M4D::Identity();
-    T_LG.block<3, 3>(0, 0) = T_GL.block<3, 3>(0, 0).transpose();                           // T_LG的旋转矩阵
-    T_LG.block<3, 1>(0, 3) = -T_GL.block<3, 3>(0, 0).transpose() * T_GL.block<3, 1>(0, 3); // T_LG的平移向量
+    T_LG.block<3, 3>(0, 0) = T_GL.block<3, 3>(0, 0).transpose();                           // 从L到G的旋转矩阵
+    T_LG.block<3, 1>(0, 3) = -T_GL.block<3, 3>(0, 0).transpose() * T_GL.block<3, 1>(0, 3); // 从L到G的平移向量
+    M3D R_LG = T_LG.block<3, 3>(0, 0);                                                     // 从L到G的旋转矩阵
+    V3D p_LG = T_LG.block<3, 1>(0, 3);                                                     // 从L到G的平移向量
 
-    M3D R_LG = T_LG.block<3, 3>(0, 0); // L到G的旋转矩阵
-    V3D p_LG = T_LG.block<3, 1>(0, 3); // L到G的平移向量
-
-    // 初始化容器，用于存储结果
-    ekfom_data.h_x = MatrixXd::Zero(n_features * n_patch, 12);            // 存储雅可比矩阵
-    ekfom_data.h = VectorXd::Zero(n_features * n_patch);                  // 存储光度误差
+    // 初始化存储光度误差和雅可比矩阵的结构
+    ekfom_data.h_x = MatrixXd::Zero(n_features * n_patch, 12);            // 光度误差雅可比矩阵
+    ekfom_data.h = VectorXd::Zero(n_features * n_patch);                  // 光度误差向量
     Eigen::MatrixXd h_x_terms = MatrixXd::Zero(n_features * n_patch, 12); // 存储每个像素的雅可比贡献
     Eigen::VectorXd h_terms = VectorXd::Zero(n_features * n_patch);       // 存储每个像素的光度误差
-    std::vector<bool> term_selected(n_features * n_patch, false);         // 标记哪些项被选中
+    std::vector<bool> term_selected(n_features * n_patch, false);         // 标记有效光度误差项
 
 #ifdef MP_EN
     omp_set_num_threads(MP_PROC_NUM); // 设置OpenMP线程数
-#pragma omp parallel for              // 并行化计算
+#pragma omp parallel for
 #endif
-    // 计算每个特征点补丁的雅可比
+    // 遍历所有特征点，计算光度误差和雅可比
     for (int j = 0; j < n_features; j++)
     {
-        bool is_fov = true;                            // 标记当前特征点是否在视野内
-        std::vector<bool> px_selected(n_patch, false); // 标记当前补丁的像素是否被选中
+        bool is_fov = true;                            // 判断特征点是否在视野范围内
+        std::vector<bool> px_selected(n_patch, false); // 标记补丁中的有效像素
 
-        // 遍历补丁中的所有像素
+        // 遍历特征点的补丁像素
         for (int l = 0; l < n_patch; l++)
         {
-            const V3D &p_feat_G = feature_manager->features()[j].p[l]; // 当前像素在G帧中的位置
-            V3D p_feat_Lk = R_LG * p_feat_G + p_LG;                    // 计算该像素在L帧中的位置
+            const V3D &p_feat_G = feature_manager->features()[j].p[l]; // 特征点在G帧中的坐标
+            V3D p_feat_Lk = R_LG * p_feat_G + p_LG;                    // 转换到L帧的坐标
             V3D p_feat_Li;
-            V2D uv_i; // 像素坐标
+            V2D uv_i; // 图像坐标
             int distortion_idx;
+
+            // 如果投影失败，标记为不在视野内并跳过
             if (!projector->projectUndistortedPoint(current_frame, p_feat_Lk, p_feat_Li, uv_i, distortion_idx, true))
             {
-                is_fov = false; // 如果投影失败，标记为不在视野内
+                is_fov = false;
                 break;
-            };
+            }
 
-            // 获取从当前图像帧到补丁图像之间的变换矩阵
+            // 获取补丁图像到当前帧图像的变换矩阵
             const M4D &T_Li_Lk = current_frame.T_Li_Lk_vec[current_frame.vec_idx[distortion_idx]];
 
-            // 检查特征点是否在有效的距离范围内
+            // 判断特征点是否在有效距离范围内
             if (p_feat_Li.norm() < min_range || p_feat_Li.norm() > max_range)
             {
                 is_fov = false;
                 break;
             }
 
-            // 检查特征点是否位于图像边缘外
+            // 判断特征点是否在图像有效区域内
             if (!((uv_i(0) > marg_size) && (uv_i(0) < marg_col) && (uv_i(1) > marg_size) && (uv_i(1) < marg_row)))
             {
                 is_fov = false;
                 break;
             }
 
-            // 检查图像遮罩，确保特征点是有效的
+            // 判断特征点是否为有效点
             if (current_frame.img_mask.ptr<uchar>(int(uv_i(1)))[int(uv_i(0))] == 0)
             {
                 is_fov = false;
@@ -779,48 +789,49 @@ void h_share_model_photometric(state_ikfom &s, esekfom::dyn_share_datastruct<dou
             double val_u_p = getSubPixelValue<float>(img, uv_i(0) + 1, uv_i(1));
             double val_u_m = getSubPixelValue<float>(img, uv_i(0) - 1, uv_i(1));
 
-            double dIx = 0.5 * (val_u_p - val_u_m); // x方向的梯度
-            double dIy = 0.5 * (val_v_p - val_v_m); // y方向的梯度
+            double dIx = 0.5 * (val_u_p - val_u_m); // x方向梯度
+            double dIy = 0.5 * (val_v_p - val_v_m); // y方向梯度
 
             Eigen::Matrix<double, 1, 2> dI_du;
             dI_du << dIx, dIy;
+
+            // 获取投影雅可比矩阵
             Eigen::MatrixXd du_dp;
-            projector->projectionJacobian(p_feat_Li, du_dp); // 获取投影的雅可比矩阵
+            projector->projectionJacobian(p_feat_Li, du_dp);
 
-            // 计算特征点对状态的雅可比，参见论文中的公式 (9)
+            // 计算特征点对状态变量的雅可比
             M3D R_Li_I = T_Li_Lk.block<3, 3>(0, 0) * T_IL.block<3, 3>(0, 0).transpose();
-
             Eigen::Matrix<double, 3, 6> dp_dtf;
-            V3D p_feat_I = R_IG * (p_feat_G - T_GI.block<3, 1>(0, 3)); // 从G帧到I帧的坐标变换
+            V3D p_feat_I = R_IG * (p_feat_G - T_GI.block<3, 1>(0, 3));
             M3D p_feat_I_x;
-            p_feat_I_x << SKEW_SYM_MATRIX(p_feat_I); // 计算反对称矩阵
+            p_feat_I_x << SKEW_SYM_MATRIX(p_feat_I);
             dp_dtf << R_Li_I * R_IG, -R_Li_I * p_feat_I_x;
 
-            // 计算光度误差，参见论文中的公式 (7)
+            // 计算光度误差
             double z_pho = getSubPixelValue<float>(img, uv_i(0), uv_i(1)) -
                            feature_manager->features()[j].intensities[l];
 
             // 记录结果
             int row_idx = j * n_patch + l;
             h_terms(row_idx) = z_pho;
-            h_x_terms.block<1, 6>(row_idx, 0) = dI_du * du_dp * dp_dtf; // 雅可比矩阵的贡献
-            px_selected[l] = true;                                      // 标记当前像素为有效
+            h_x_terms.block<1, 6>(row_idx, 0) = dI_du * du_dp * dp_dtf;
+            px_selected[l] = true;
         }
 
-        // 如果整个补丁都在视野内，则将其加入到最终结果中
+        // 如果整个补丁都在视野内，则将其加入最终结果
         if (is_fov)
         {
             for (size_t t_idx = 0u; t_idx < px_selected.size(); ++t_idx)
             {
                 if (px_selected[t_idx])
                 {
-                    term_selected[j * n_patch + t_idx] = true; // 标记补丁中的有效项
+                    term_selected[j * n_patch + t_idx] = true;
                 }
             }
         }
     }
 
-    // 将计算结果存入ekfom_data
+    // 将计算结果存储到ekfom_data中
     int px_count = 0;
     for (size_t t_idx = 0u; t_idx < term_selected.size(); ++t_idx)
     {
@@ -832,7 +843,7 @@ void h_share_model_photometric(state_ikfom &s, esekfom::dyn_share_datastruct<dou
         }
     }
 
-    // 调整尺寸以适应有效的光度误差项数量
+    // 调整数据大小以适应有效项
     ekfom_data.h.conservativeResize(px_count);
     ekfom_data.h_x.conservativeResize(px_count, 12);
 }
