@@ -1,7 +1,6 @@
-// This file features modifications from Patrick Pfreundschuh 
+// This file features modifications from Patrick Pfreundschuh
 // (patripfr@ethz.ch) from 2024, mainly concerning addition of photometric
 // terms, clean-up, and logging, as described in: https://arxiv.org/abs/2310.01235
-
 
 // This is an advanced implementation of the algorithm described in the
 // following paper:
@@ -90,7 +89,7 @@ bool scan_pub_en = false, scan_body_pub_en = false;
 double geo_std;
 
 vector<BoxPointType> cub_needrm;
-vector<PointVector>  Nearest_Points;
+vector<PointVector> Nearest_Points;
 vector<double> extrinT(3, 0.0);
 vector<double> extrinR(9, 0.0);
 deque<double> time_buffer;
@@ -140,10 +139,10 @@ double photo_scale;
 Eigen::MatrixXd h_geo_last;
 LidarFrame current_frame;
 
-void pointBodyToWorld(PointType const * const pi, PointType * const po)
+void pointBodyToWorld(PointType const *const pi, PointType *const po)
 {
     V3D p_body(pi->x, pi->y, pi->z);
-    V3D p_global(state_point.rot * (state_point.offset_R_L_I*p_body + state_point.offset_T_L_I) + state_point.pos);
+    V3D p_global(state_point.rot * (state_point.offset_R_L_I * p_body + state_point.offset_T_L_I) + state_point.pos);
 
     po->x = p_global(0);
     po->y = p_global(1);
@@ -151,21 +150,21 @@ void pointBodyToWorld(PointType const * const pi, PointType * const po)
     po->intensity = pi->intensity;
 }
 
-template<typename T>
+template <typename T>
 void pointBodyToWorld(const Matrix<T, 3, 1> &pi, Matrix<T, 3, 1> &po)
 {
     V3D p_body(pi[0], pi[1], pi[2]);
-    V3D p_global(state_point.rot * (state_point.offset_R_L_I*p_body + state_point.offset_T_L_I) + state_point.pos);
+    V3D p_global(state_point.rot * (state_point.offset_R_L_I * p_body + state_point.offset_T_L_I) + state_point.pos);
 
     po[0] = p_global(0);
     po[1] = p_global(1);
     po[2] = p_global(2);
 }
 
-void RGBpointBodyToWorld(PointType const * const pi, PointType * const po)
+void RGBpointBodyToWorld(PointType const *const pi, PointType *const po)
 {
     V3D p_body(pi->x, pi->y, pi->z);
-    V3D p_global(state_point.rot * (state_point.offset_R_L_I*p_body + state_point.offset_T_L_I) + state_point.pos);
+    V3D p_global(state_point.rot * (state_point.offset_R_L_I * p_body + state_point.offset_T_L_I) + state_point.pos);
 
     po->x = p_global(0);
     po->y = p_global(1);
@@ -173,10 +172,10 @@ void RGBpointBodyToWorld(PointType const * const pi, PointType * const po)
     po->intensity = pi->intensity;
 }
 
-void RGBpointBodyLidarToIMU(PointType const * const pi, PointType * const po)
+void RGBpointBodyLidarToIMU(PointType const *const pi, PointType *const po)
 {
     V3D p_body_lidar(pi->x, pi->y, pi->z);
-    V3D p_body_imu(state_point.offset_R_L_I*p_body_lidar + state_point.offset_T_L_I);
+    V3D p_body_imu(state_point.offset_R_L_I * p_body_lidar + state_point.offset_T_L_I);
 
     po->x = p_body_imu(0);
     po->y = p_body_imu(1);
@@ -197,8 +196,10 @@ void lasermap_fov_segment()
     cub_needrm.clear();
     pointBodyToWorld(XAxisPoint_body, XAxisPoint_world);
     V3D pos_LiD = pos_lid;
-    if (!Localmap_Initialized){
-        for (int i = 0; i < 3; i++){
+    if (!Localmap_Initialized)
+    {
+        for (int i = 0; i < 3; i++)
+        {
             LocalMap_Points.vertex_min[i] = pos_LiD(i) - cube_len / 2.0;
             LocalMap_Points.vertex_max[i] = pos_LiD(i) + cube_len / 2.0;
         }
@@ -207,27 +208,34 @@ void lasermap_fov_segment()
     }
     float dist_to_map_edge[3][2];
     bool need_move = false;
-    for (int i = 0; i < 3; i++){
+    for (int i = 0; i < 3; i++)
+    {
         dist_to_map_edge[i][0] = fabs(pos_LiD(i) - LocalMap_Points.vertex_min[i]);
         dist_to_map_edge[i][1] = fabs(pos_LiD(i) - LocalMap_Points.vertex_max[i]);
-        if (dist_to_map_edge[i][0] <= MOV_THRESHOLD * DET_RANGE || 
-            dist_to_map_edge[i][1] <= MOV_THRESHOLD * DET_RANGE) {
-                need_move = true;
+        if (dist_to_map_edge[i][0] <= MOV_THRESHOLD * DET_RANGE ||
+            dist_to_map_edge[i][1] <= MOV_THRESHOLD * DET_RANGE)
+        {
+            need_move = true;
         }
     }
-    if (!need_move) return;
+    if (!need_move)
+        return;
     BoxPointType New_LocalMap_Points, tmp_boxpoints;
     New_LocalMap_Points = LocalMap_Points;
-    float mov_dist = max((cube_len - 2.0 * MOV_THRESHOLD * DET_RANGE) * 0.5 * 0.9, 
-        double(DET_RANGE * (MOV_THRESHOLD -1)));
-    for (int i = 0; i < 3; i++){
+    float mov_dist = max((cube_len - 2.0 * MOV_THRESHOLD * DET_RANGE) * 0.5 * 0.9,
+                         double(DET_RANGE * (MOV_THRESHOLD - 1)));
+    for (int i = 0; i < 3; i++)
+    {
         tmp_boxpoints = LocalMap_Points;
-        if (dist_to_map_edge[i][0] <= MOV_THRESHOLD * DET_RANGE){
+        if (dist_to_map_edge[i][0] <= MOV_THRESHOLD * DET_RANGE)
+        {
             New_LocalMap_Points.vertex_max[i] -= mov_dist;
             New_LocalMap_Points.vertex_min[i] -= mov_dist;
             tmp_boxpoints.vertex_min[i] = LocalMap_Points.vertex_max[i] - mov_dist;
             cub_needrm.push_back(tmp_boxpoints);
-        } else if (dist_to_map_edge[i][1] <= MOV_THRESHOLD * DET_RANGE){
+        }
+        else if (dist_to_map_edge[i][1] <= MOV_THRESHOLD * DET_RANGE)
+        {
             New_LocalMap_Points.vertex_max[i] += mov_dist;
             New_LocalMap_Points.vertex_min[i] += mov_dist;
             tmp_boxpoints.vertex_max[i] = LocalMap_Points.vertex_min[i] + mov_dist;
@@ -237,7 +245,8 @@ void lasermap_fov_segment()
     LocalMap_Points = New_LocalMap_Points;
 
     points_cache_collect();
-    if(cub_needrm.size() > 0) kdtree_delete_counter = ikdtree.Delete_Point_Boxes(cub_needrm);
+    if (cub_needrm.size() > 0)
+        kdtree_delete_counter = ikdtree.Delete_Point_Boxes(cub_needrm);
 }
 
 void standard_pcl_cbk(const sensor_msgs::PointCloud2::ConstPtr &msg)
@@ -249,10 +258,10 @@ void standard_pcl_cbk(const sensor_msgs::PointCloud2::ConstPtr &msg)
         time_buffer.clear();
     }
 
-    PointCloudXYZI::Ptr  ptr(new PointCloudXYZI());
+    PointCloudXYZI::Ptr ptr(new PointCloudXYZI());
     p_pre->process(msg, ptr);
     const std::lock_guard<std::mutex> lock(mtx_buffer);
-    
+
     lidar_buffer.push_back(ptr);
     time_buffer.push_back(msg->header.stamp.toSec());
     last_timestamp_lidar = msg->header.stamp.toSec();
@@ -265,8 +274,8 @@ void imu_cbk(const sensor_msgs::Imu::ConstPtr &msg_in)
     sensor_msgs::Imu::Ptr msg(new sensor_msgs::Imu(*msg_in));
     if (abs(timediff_lidar_wrt_imu) > 0.1 && time_sync_en)
     {
-        msg->header.stamp = \
-        ros::Time().fromSec(timediff_lidar_wrt_imu + msg_in->header.stamp.toSec());
+        msg->header.stamp =
+            ros::Time().fromSec(timediff_lidar_wrt_imu + msg_in->header.stamp.toSec());
     }
 
     double timestamp = msg->header.stamp.toSec();
@@ -287,12 +296,13 @@ bool sync_packages(MeasureGroup &meas)
 {
 
     const std::lock_guard<std::mutex> lock(mtx_buffer);
-    if (lidar_buffer.empty() || imu_buffer.empty()) {
+    if (lidar_buffer.empty() || imu_buffer.empty())
+    {
         return false;
     }
 
     /*** push a lidar scan ***/
-    if(!lidar_pushed)
+    if (!lidar_pushed)
     {
         meas.lidar = lidar_buffer.front();
         meas.lidar_beg_time = time_buffer.front();
@@ -316,7 +326,8 @@ bool sync_packages(MeasureGroup &meas)
     while ((!imu_buffer.empty()) && (imu_time < lidar_end_time))
     {
         imu_time = imu_buffer.front()->header.stamp.toSec();
-        if(imu_time > lidar_end_time) break;
+        if (imu_time > lidar_end_time)
+            break;
         meas.imu.push_back(imu_buffer.front());
         imu_buffer.pop_front();
     }
@@ -326,17 +337,21 @@ bool sync_packages(MeasureGroup &meas)
     return true;
 }
 
-V3D calculateContributions(const Eigen::MatrixXd& H, Eigen::MatrixXd& evec) {
+V3D calculateContributions(const Eigen::MatrixXd &H, Eigen::MatrixXd &evec)
+{
     V3D contrib;
     contrib.setZero();
 
-    for (size_t feat_idx = 0u; feat_idx < H.rows(); ++feat_idx) {
-        for (size_t dir_idx = 0u; dir_idx < 3; ++dir_idx) {
+    for (size_t feat_idx = 0u; feat_idx < H.rows(); ++feat_idx)
+    {
+        for (size_t dir_idx = 0u; dir_idx < 3; ++dir_idx)
+        {
             V3D feat_row = H.row(feat_idx).transpose();
             feat_row.normalize();
             V3D dir = evec.col(dir_idx);
             const float dotp = fabs(feat_row.dot(dir));
-            if (dotp > 0.5) {
+            if (dotp > 0.5)
+            {
                 contrib(dir_idx) += dotp;
             }
         }
@@ -344,9 +359,10 @@ V3D calculateContributions(const Eigen::MatrixXd& H, Eigen::MatrixXd& evec) {
     return contrib;
 }
 
-Eigen::MatrixXd calculateEigenVectors(const Eigen::MatrixXd& H) {
-    Eigen::MatrixXd HTH = H.transpose() * H; 
-    Eigen::SelfAdjointEigenSolver<Eigen::Matrix<double, 3,3>> solve(
+Eigen::MatrixXd calculateEigenVectors(const Eigen::MatrixXd &H)
+{
+    Eigen::MatrixXd HTH = H.transpose() * H;
+    Eigen::SelfAdjointEigenSolver<Eigen::Matrix<double, 3, 3>> solve(
         HTH);
     Eigen::Matrix3d evec = solve.eigenvectors().real();
     return evec;
@@ -369,29 +385,32 @@ void map_incremental()
             bool need_add = true;
             BoxPointType Box_of_Point;
             PointType downsample_result, mid_point;
-            mid_point.x = floor(feats_down_world->points[i].x/filter_size_map_min)* filter_size_map_min + 
-                0.5 * filter_size_map_min;
-            mid_point.y = floor(feats_down_world->points[i].y/filter_size_map_min)* filter_size_map_min + 
-                0.5 * filter_size_map_min;
-            mid_point.z = floor(feats_down_world->points[i].z/filter_size_map_min)* filter_size_map_min +
-                 0.5 * filter_size_map_min;
-            float dist  = calc_dist(feats_down_world->points[i],mid_point);
-            if (fabs(points_near[0].x - mid_point.x) > 0.5 * filter_size_map_min && 
-                fabs(points_near[0].y - mid_point.y) > 0.5 * filter_size_map_min && 
-                fabs(points_near[0].z - mid_point.z) > 0.5 * filter_size_map_min){
+            mid_point.x = floor(feats_down_world->points[i].x / filter_size_map_min) * filter_size_map_min +
+                          0.5 * filter_size_map_min;
+            mid_point.y = floor(feats_down_world->points[i].y / filter_size_map_min) * filter_size_map_min +
+                          0.5 * filter_size_map_min;
+            mid_point.z = floor(feats_down_world->points[i].z / filter_size_map_min) * filter_size_map_min +
+                          0.5 * filter_size_map_min;
+            float dist = calc_dist(feats_down_world->points[i], mid_point);
+            if (fabs(points_near[0].x - mid_point.x) > 0.5 * filter_size_map_min &&
+                fabs(points_near[0].y - mid_point.y) > 0.5 * filter_size_map_min &&
+                fabs(points_near[0].z - mid_point.z) > 0.5 * filter_size_map_min)
+            {
                 PointNoNeedDownsample.push_back(feats_down_world->points[i]);
                 continue;
             }
-            for (int readd_i = 0; readd_i < NUM_MATCH_POINTS; readd_i ++)
+            for (int readd_i = 0; readd_i < NUM_MATCH_POINTS; readd_i++)
             {
-                if (points_near.size() < NUM_MATCH_POINTS) break;
+                if (points_near.size() < NUM_MATCH_POINTS)
+                    break;
                 if (calc_dist(points_near[readd_i], mid_point) < dist)
                 {
                     need_add = false;
                     break;
                 }
             }
-            if (need_add) PointToAdd.push_back(feats_down_world->points[i]);
+            if (need_add)
+                PointToAdd.push_back(feats_down_world->points[i]);
         }
         else
         {
@@ -405,18 +424,18 @@ void map_incremental()
 }
 
 PointCloudXYZI::Ptr pcl_wait_save(new PointCloudXYZI());
-void publish_frame_world(const ros::Publisher & pubLaserCloudFull)
+void publish_frame_world(const ros::Publisher &pubLaserCloudFull)
 {
-    if(scan_pub_en)
+    if (scan_pub_en)
     {
         PointCloudXYZI::Ptr laserCloudFullRes(feats_undistort);
         int size = laserCloudFullRes->points.size();
-        PointCloudXYZI::Ptr laserCloudWorld( \
-                        new PointCloudXYZI(size, 1));
+        PointCloudXYZI::Ptr laserCloudWorld(
+            new PointCloudXYZI(size, 1));
 
         for (int i = 0; i < size; i++)
         {
-            RGBpointBodyToWorld(&laserCloudFullRes->points[i], \
+            RGBpointBodyToWorld(&laserCloudFullRes->points[i],
                                 &laserCloudWorld->points[i]);
         }
         sensor_msgs::PointCloud2 laserCloudmsg;
@@ -432,24 +451,24 @@ void publish_frame_world(const ros::Publisher & pubLaserCloudFull)
     if (pcd_save_en)
     {
         int size = feats_undistort->points.size();
-        PointCloudXYZI::Ptr laserCloudWorld( \
-                        new PointCloudXYZI(size, 1));
+        PointCloudXYZI::Ptr laserCloudWorld(
+            new PointCloudXYZI(size, 1));
 
         for (int i = 0; i < size; i++)
         {
-            RGBpointBodyToWorld(&feats_undistort->points[i], \
+            RGBpointBodyToWorld(&feats_undistort->points[i],
                                 &laserCloudWorld->points[i]);
         }
         *pcl_wait_save += *laserCloudWorld;
 
         static int scan_wait_num = 0;
-        scan_wait_num ++;
-        if (pcl_wait_save->size() > 0 && pcd_save_interval > 0  && scan_wait_num >= pcd_save_interval)
+        scan_wait_num++;
+        if (pcl_wait_save->size() > 0 && pcd_save_interval > 0 && scan_wait_num >= pcd_save_interval)
         {
-            pcd_index ++;
+            pcd_index++;
             string pcd_dir = string(ROOT_DIR) + "PCD/";
-            bool directory_exists = boost::filesystem::exists(pcd_dir) && 
-                boost::filesystem::is_directory(pcd_dir);
+            bool directory_exists = boost::filesystem::exists(pcd_dir) &&
+                                    boost::filesystem::is_directory(pcd_dir);
             if (!directory_exists)
             {
                 boost::filesystem::create_directory(pcd_dir);
@@ -464,14 +483,14 @@ void publish_frame_world(const ros::Publisher & pubLaserCloudFull)
     }
 }
 
-void publish_frame_body(const ros::Publisher & pubLaserCloudFull_body)
+void publish_frame_body(const ros::Publisher &pubLaserCloudFull_body)
 {
     int size = feats_undistort->points.size();
     PointCloudXYZI::Ptr laserCloudIMUBody(new PointCloudXYZI(size, 1));
     for (int i = 0; i < size; i++)
     {
-        RGBpointBodyLidarToIMU(&feats_undistort->points[i], \
-                            &laserCloudIMUBody->points[i]);
+        RGBpointBodyLidarToIMU(&feats_undistort->points[i],
+                               &laserCloudIMUBody->points[i]);
     }
 
     sensor_msgs::PointCloud2 laserCloudmsg;
@@ -481,8 +500,8 @@ void publish_frame_body(const ros::Publisher & pubLaserCloudFull_body)
     pubLaserCloudFull_body.publish(laserCloudmsg);
 }
 
-template<typename T>
-void set_posestamp(T & out)
+template <typename T>
+void set_posestamp(T &out)
 {
     out.pose.position.x = state_point.pos(0);
     out.pose.position.y = state_point.pos(1);
@@ -491,40 +510,39 @@ void set_posestamp(T & out)
     out.pose.orientation.y = geoQuat.y;
     out.pose.orientation.z = geoQuat.z;
     out.pose.orientation.w = geoQuat.w;
-
 }
 
-void publish_odometry(const ros::Publisher & pubOdomAftMapped)
+void publish_odometry(const ros::Publisher &pubOdomAftMapped)
 {
     odomAftMapped.header.frame_id = "camera_init";
     odomAftMapped.child_frame_id = "body";
-    odomAftMapped.header.stamp = ros::Time().fromSec(lidar_end_time);// ros::Time().fromSec(lidar_end_time);
+    odomAftMapped.header.stamp = ros::Time().fromSec(lidar_end_time); // ros::Time().fromSec(lidar_end_time);
     set_posestamp(odomAftMapped.pose);
     pubOdomAftMapped.publish(odomAftMapped);
     auto P = kf.get_P();
-    for (int i = 0; i < 6; i ++)
+    for (int i = 0; i < 6; i++)
     {
         int k = i < 3 ? i + 3 : i - 3;
-        odomAftMapped.pose.covariance[i*6 + 0] = P(k, 3);
-        odomAftMapped.pose.covariance[i*6 + 1] = P(k, 4);
-        odomAftMapped.pose.covariance[i*6 + 2] = P(k, 5);
-        odomAftMapped.pose.covariance[i*6 + 3] = P(k, 0);
-        odomAftMapped.pose.covariance[i*6 + 4] = P(k, 1);
-        odomAftMapped.pose.covariance[i*6 + 5] = P(k, 2);
+        odomAftMapped.pose.covariance[i * 6 + 0] = P(k, 3);
+        odomAftMapped.pose.covariance[i * 6 + 1] = P(k, 4);
+        odomAftMapped.pose.covariance[i * 6 + 2] = P(k, 5);
+        odomAftMapped.pose.covariance[i * 6 + 3] = P(k, 0);
+        odomAftMapped.pose.covariance[i * 6 + 4] = P(k, 1);
+        odomAftMapped.pose.covariance[i * 6 + 5] = P(k, 2);
     }
 
     static tf::TransformBroadcaster br;
-    tf::Transform                   transform;
-    tf::Quaternion                  q;
-    transform.setOrigin(tf::Vector3(odomAftMapped.pose.pose.position.x, \
-                                    odomAftMapped.pose.pose.position.y, \
+    tf::Transform transform;
+    tf::Quaternion q;
+    transform.setOrigin(tf::Vector3(odomAftMapped.pose.pose.position.x,
+                                    odomAftMapped.pose.pose.position.y,
                                     odomAftMapped.pose.pose.position.z));
     q.setW(odomAftMapped.pose.pose.orientation.w);
     q.setX(odomAftMapped.pose.pose.orientation.x);
     q.setY(odomAftMapped.pose.pose.orientation.y);
     q.setZ(odomAftMapped.pose.pose.orientation.z);
-    transform.setRotation( q );
-    br.sendTransform( tf::StampedTransform( transform, odomAftMapped.header.stamp, "camera_init", "body" ) );
+    transform.setRotation(q);
+    br.sendTransform(tf::StampedTransform(transform, odomAftMapped.header.stamp, "camera_init", "body"));
 }
 
 void publish_path(const ros::Publisher pubPath)
@@ -550,40 +568,41 @@ void h_share_model_geometric(state_ikfom &s, esekfom::dyn_share_datastruct<doubl
 
     /** closest surface search and residual computation **/
 
-    #ifdef MP_EN
-        omp_set_num_threads(MP_PROC_NUM);
-        #pragma omp parallel for
-    #endif
+#ifdef MP_EN
+    omp_set_num_threads(MP_PROC_NUM);
+#pragma omp parallel for
+#endif
     for (int i = 0; i < feats_down_size; i++)
     {
-        PointType &point_body  = feats_down_body->points[i];
+        PointType &point_body = feats_down_body->points[i];
         PointType &point_world = feats_down_world->points[i];
 
         /* transform to world frame */
         V3D p_body(point_body.x, point_body.y, point_body.z);
-        V3D p_global(s.rot * (s.offset_R_L_I*p_body + s.offset_T_L_I) + s.pos);
+        V3D p_global(s.rot * (s.offset_R_L_I * p_body + s.offset_T_L_I) + s.pos);
         point_world.x = p_global(0);
         point_world.y = p_global(1);
         point_world.z = p_global(2);
         point_world.intensity = point_body.intensity;
-
 
         vector<float> pointSearchSqDis(NUM_MATCH_POINTS);
         auto &points_near = Nearest_Points[i];
 
         /** Find the closest surfaces in the map **/
 
-         if (ekfom_data.converge)
+        if (ekfom_data.converge)
         {
             /** Find the closest surfaces in the map **/
             ikdtree.Nearest_Search(point_world, NUM_MATCH_POINTS, points_near, pointSearchSqDis);
-            point_selected_surf[i] = points_near.size() < NUM_MATCH_POINTS ? false : 
-                pointSearchSqDis[NUM_MATCH_POINTS - 1] > 5 ? false : true;
+            point_selected_surf[i] = points_near.size() < NUM_MATCH_POINTS ? false : pointSearchSqDis[NUM_MATCH_POINTS - 1] > 5 ? false
+                                                                                                                                : true;
         }
 
-        if (!point_selected_surf[i]) continue;
+        if (!point_selected_surf[i])
+            continue;
 
-        VF(4) pabcd;
+        VF(4)
+        pabcd;
         point_selected_surf[i] = false;
         if (esti_plane(pabcd, points_near, 0.1f))
         {
@@ -609,50 +628,50 @@ void h_share_model_geometric(state_ikfom &s, esekfom::dyn_share_datastruct<doubl
         {
             laserCloudOri->points[effct_feat_num] = feats_down_body->points[i];
             corr_normvect->points[effct_feat_num] = normvec->points[i];
-            effct_feat_num ++;
+            effct_feat_num++;
         }
     }
 
     if (effct_feat_num < 1)
     {
         ekfom_data.valid = false;
-        ekfom_data.h_x.resize(0,0);
+        ekfom_data.h_x.resize(0, 0);
         ekfom_data.h.resize(0);
         ROS_WARN("No Effective Points! \n");
         return;
     }
 
     /*** Computation of Measurement Jacobian matrix H and measurements vector ***/
-    ekfom_data.h_x = MatrixXd::Zero(effct_feat_num, 12); //23
+    ekfom_data.h_x = MatrixXd::Zero(effct_feat_num, 12); // 23
     ekfom_data.h.resize(effct_feat_num);
- 
+
     for (int i = 0; i < effct_feat_num; i++)
     {
 
-        const PointType &laser_p  = laserCloudOri->points[i];
+        const PointType &laser_p = laserCloudOri->points[i];
         V3D point_this_be(laser_p.x, laser_p.y, laser_p.z);
         M3D point_be_crossmat;
         point_be_crossmat << SKEW_SYM_MATRIX(point_this_be);
         V3D point_this = s.offset_R_L_I * point_this_be + s.offset_T_L_I;
         M3D point_crossmat;
-        point_crossmat<<SKEW_SYM_MATRIX(point_this);
+        point_crossmat << SKEW_SYM_MATRIX(point_this);
 
         /*** get the normal vector of closest surface/corner ***/
         const PointType &norm_p = corr_normvect->points[i];
         V3D norm_vec(norm_p.x, norm_p.y, norm_p.z);
 
         /*** calculate the Measuremnt Jacobian matrix H ***/
-        V3D C(s.rot.conjugate() *norm_vec);
+        V3D C(s.rot.conjugate() * norm_vec);
         V3D A(point_crossmat * C);
         if (extrinsic_est_en)
         {
             V3D B(point_be_crossmat * s.offset_R_L_I.conjugate() * C);
-            ekfom_data.h_x.block<1, 12>(i,0) << norm_p.x, norm_p.y, norm_p.z, VEC_FROM_ARRAY(A), VEC_FROM_ARRAY(B), 
+            ekfom_data.h_x.block<1, 12>(i, 0) << norm_p.x, norm_p.y, norm_p.z, VEC_FROM_ARRAY(A), VEC_FROM_ARRAY(B),
                 VEC_FROM_ARRAY(C);
         }
         else
         {
-            ekfom_data.h_x.block<1, 12>(i,0) << norm_p.x, norm_p.y, norm_p.z, VEC_FROM_ARRAY(A), 0.0, 0.0, 0.0, 0.0, 
+            ekfom_data.h_x.block<1, 12>(i, 0) << norm_p.x, norm_p.y, norm_p.z, VEC_FROM_ARRAY(A), 0.0, 0.0, 0.0, 0.0,
                 0.0, 0.0;
         }
 
@@ -664,139 +683,151 @@ void h_share_model_geometric(state_ikfom &s, esekfom::dyn_share_datastruct<doubl
 void h_share_model_photometric(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekfom_data)
 {
     // 如果没有有效的特征点，输出警告并返回
-    if (feature_manager->features().empty()) {
+    if (feature_manager->features().empty())
+    {
         ekfom_data.valid = false;
         ROS_WARN("No Effective Photometric Points! \n");
         return;
     }
 
     // 获取当前图像的强度矩阵
-    cv::Mat& img = current_frame.img_intensity;
+    cv::Mat &img = current_frame.img_intensity;
 
     // 一些参数初始化
-    const int marg_size = feature_manager->margin();  // 图像边缘大小（可能用于避免边缘效应）
-    const int marg_col = img.cols - marg_size;  // 图像列数减去边缘大小
-    const int marg_row = img.rows - marg_size;  // 图像行数减去边缘大小
-    const int patch_size = feature_manager->patchSize();  // 每个特征点的补丁大小
-    const int n_patch = patch_size * patch_size;  // 补丁中像素的数量
-    const int n_features = feature_manager->features().size();  // 特征点的数量
-    const double min_range = feature_manager->minRange();  // 最小有效距离
-    const double max_range = feature_manager->maxRange();  // 最大有效距离
+    const int marg_size = feature_manager->margin();           // 图像边缘大小（可能用于避免边缘效应）
+    const int marg_col = img.cols - marg_size;                 // 图像列数减去边缘大小
+    const int marg_row = img.rows - marg_size;                 // 图像行数减去边缘大小
+    const int patch_size = feature_manager->patchSize();       // 每个特征点的补丁大小
+    const int n_patch = patch_size * patch_size;               // 补丁中像素的数量
+    const int n_features = feature_manager->features().size(); // 特征点的数量
+    const double min_range = feature_manager->minRange();      // 最小有效距离
+    const double max_range = feature_manager->maxRange();      // 最大有效距离
 
     // 计算所需的变换矩阵
-    M4D T_GI = M4D::Identity();  // 初始化G到I的变换矩阵
-    T_GI.block<3,3>(0,0) = s.rot.toRotationMatrix();  // 设置旋转矩阵
-    T_GI.block<3,1>(0,3) = s.pos;  // 设置平移向量
-    M3D R_IG = T_GI.block<3,3>(0,0).transpose();  // 获取旋转矩阵的转置
+    M4D T_GI = M4D::Identity();                        // 初始化G到I的变换矩阵
+    T_GI.block<3, 3>(0, 0) = s.rot.toRotationMatrix(); // 设置旋转矩阵
+    T_GI.block<3, 1>(0, 3) = s.pos;                    // 设置平移向量
+    M3D R_IG = T_GI.block<3, 3>(0, 0).transpose();     // 获取旋转矩阵的转置
 
     // T_GL是从G到L的变换矩阵
     M4D T_GL = T_GI * T_IL;
     M4D T_LG = M4D::Identity();
-    T_LG.block<3,3>(0,0) = T_GL.block<3,3>(0,0).transpose();  // T_LG的旋转矩阵
-    T_LG.block<3,1>(0,3) = -T_GL.block<3,3>(0,0).transpose() * T_GL.block<3,1>(0,3);  // T_LG的平移向量
-    
-    M3D R_LG = T_LG.block<3,3>(0,0);  // L到G的旋转矩阵
-    V3D p_LG = T_LG.block<3,1>(0,3);  // L到G的平移向量
+    T_LG.block<3, 3>(0, 0) = T_GL.block<3, 3>(0, 0).transpose();                           // T_LG的旋转矩阵
+    T_LG.block<3, 1>(0, 3) = -T_GL.block<3, 3>(0, 0).transpose() * T_GL.block<3, 1>(0, 3); // T_LG的平移向量
+
+    M3D R_LG = T_LG.block<3, 3>(0, 0); // L到G的旋转矩阵
+    V3D p_LG = T_LG.block<3, 1>(0, 3); // L到G的平移向量
 
     // 初始化容器，用于存储结果
-    ekfom_data.h_x = MatrixXd::Zero(n_features*n_patch, 12);  // 存储雅可比矩阵
-    ekfom_data.h = VectorXd::Zero(n_features*n_patch);  // 存储光度误差
-    Eigen::MatrixXd h_x_terms = MatrixXd::Zero(n_features*n_patch, 12);  // 存储每个像素的雅可比贡献
-    Eigen::VectorXd h_terms = VectorXd::Zero(n_features*n_patch);  // 存储每个像素的光度误差
-    std::vector<bool> term_selected(n_features * n_patch, false);  // 标记哪些项被选中
+    ekfom_data.h_x = MatrixXd::Zero(n_features * n_patch, 12);            // 存储雅可比矩阵
+    ekfom_data.h = VectorXd::Zero(n_features * n_patch);                  // 存储光度误差
+    Eigen::MatrixXd h_x_terms = MatrixXd::Zero(n_features * n_patch, 12); // 存储每个像素的雅可比贡献
+    Eigen::VectorXd h_terms = VectorXd::Zero(n_features * n_patch);       // 存储每个像素的光度误差
+    std::vector<bool> term_selected(n_features * n_patch, false);         // 标记哪些项被选中
 
-    #ifdef MP_EN
-        omp_set_num_threads(MP_PROC_NUM);  // 设置OpenMP线程数
-        #pragma omp parallel for  // 并行化计算
-    #endif
+#ifdef MP_EN
+    omp_set_num_threads(MP_PROC_NUM); // 设置OpenMP线程数
+#pragma omp parallel for              // 并行化计算
+#endif
     // 计算每个特征点补丁的雅可比
-    for (int j = 0; j < n_features; j++) {
-        bool is_fov = true;  // 标记当前特征点是否在视野内
-        std::vector<bool> px_selected(n_patch, false);  // 标记当前补丁的像素是否被选中
+    for (int j = 0; j < n_features; j++)
+    {
+        bool is_fov = true;                            // 标记当前特征点是否在视野内
+        std::vector<bool> px_selected(n_patch, false); // 标记当前补丁的像素是否被选中
 
         // 遍历补丁中的所有像素
-        for (int l = 0; l < n_patch; l++) {
-            const V3D& p_feat_G = feature_manager->features()[j].p[l];  // 当前像素在G帧中的位置
-            V3D p_feat_Lk = R_LG * p_feat_G + p_LG;  // 计算该像素在L帧中的位置
+        for (int l = 0; l < n_patch; l++)
+        {
+            const V3D &p_feat_G = feature_manager->features()[j].p[l]; // 当前像素在G帧中的位置
+            V3D p_feat_Lk = R_LG * p_feat_G + p_LG;                    // 计算该像素在L帧中的位置
             V3D p_feat_Li;
-            V2D uv_i;  // 像素坐标
+            V2D uv_i; // 像素坐标
             int distortion_idx;
-            if(!projector->projectUndistortedPoint(current_frame, p_feat_Lk, p_feat_Li, uv_i, distortion_idx, true)) {
-                is_fov = false;  // 如果投影失败，标记为不在视野内
+            if (!projector->projectUndistortedPoint(current_frame, p_feat_Lk, p_feat_Li, uv_i, distortion_idx, true))
+            {
+                is_fov = false; // 如果投影失败，标记为不在视野内
                 break;
             };
 
             // 获取从当前图像帧到补丁图像之间的变换矩阵
-            const M4D& T_Li_Lk = current_frame.T_Li_Lk_vec[current_frame.vec_idx[distortion_idx]];
+            const M4D &T_Li_Lk = current_frame.T_Li_Lk_vec[current_frame.vec_idx[distortion_idx]];
 
             // 检查特征点是否在有效的距离范围内
-            if (p_feat_Li.norm() < min_range || p_feat_Li.norm() > max_range) {
+            if (p_feat_Li.norm() < min_range || p_feat_Li.norm() > max_range)
+            {
                 is_fov = false;
                 break;
             }
 
             // 检查特征点是否位于图像边缘外
-            if (!((uv_i(0) > marg_size) && (uv_i(0) < marg_col) && (uv_i(1) > marg_size) && (uv_i(1) < marg_row))) {
+            if (!((uv_i(0) > marg_size) && (uv_i(0) < marg_col) && (uv_i(1) > marg_size) && (uv_i(1) < marg_row)))
+            {
                 is_fov = false;
                 break;
             }
 
             // 检查图像遮罩，确保特征点是有效的
-            if (current_frame.img_mask.ptr<uchar>(int(uv_i(1)))[int(uv_i(0))] == 0) {
+            if (current_frame.img_mask.ptr<uchar>(int(uv_i(1)))[int(uv_i(0))] == 0)
+            {
                 is_fov = false;
                 break;
             }
 
             // 计算图像梯度
-            double val_v_p = getSubPixelValue<float>(img, uv_i(0), uv_i(1)+1);
-            double val_v_m = getSubPixelValue<float>(img, uv_i(0), uv_i(1)-1);
-            double val_u_p = getSubPixelValue<float>(img, uv_i(0)+1, uv_i(1));
-            double val_u_m = getSubPixelValue<float>(img, uv_i(0)-1, uv_i(1));
+            double val_v_p = getSubPixelValue<float>(img, uv_i(0), uv_i(1) + 1);
+            double val_v_m = getSubPixelValue<float>(img, uv_i(0), uv_i(1) - 1);
+            double val_u_p = getSubPixelValue<float>(img, uv_i(0) + 1, uv_i(1));
+            double val_u_m = getSubPixelValue<float>(img, uv_i(0) - 1, uv_i(1));
 
-            double dIx = 0.5 * (val_u_p - val_u_m);  // x方向的梯度
-            double dIy = 0.5 * (val_v_p - val_v_m);  // y方向的梯度
+            double dIx = 0.5 * (val_u_p - val_u_m); // x方向的梯度
+            double dIy = 0.5 * (val_v_p - val_v_m); // y方向的梯度
 
             Eigen::Matrix<double, 1, 2> dI_du;
             dI_du << dIx, dIy;
             Eigen::MatrixXd du_dp;
-            projector->projectionJacobian(p_feat_Li, du_dp);  // 获取投影的雅可比矩阵
+            projector->projectionJacobian(p_feat_Li, du_dp); // 获取投影的雅可比矩阵
 
             // 计算特征点对状态的雅可比，参见论文中的公式 (9)
-            M3D R_Li_I = T_Li_Lk.block<3,3>(0,0) * T_IL.block<3,3>(0,0).transpose();
-            
+            M3D R_Li_I = T_Li_Lk.block<3, 3>(0, 0) * T_IL.block<3, 3>(0, 0).transpose();
+
             Eigen::Matrix<double, 3, 6> dp_dtf;
-            V3D p_feat_I = R_IG*(p_feat_G - T_GI.block<3,1>(0,3));  // 从G帧到I帧的坐标变换
+            V3D p_feat_I = R_IG * (p_feat_G - T_GI.block<3, 1>(0, 3)); // 从G帧到I帧的坐标变换
             M3D p_feat_I_x;
-            p_feat_I_x << SKEW_SYM_MATRIX(p_feat_I);  // 计算反对称矩阵
-            dp_dtf <<  R_Li_I*R_IG, -R_Li_I*p_feat_I_x;
+            p_feat_I_x << SKEW_SYM_MATRIX(p_feat_I); // 计算反对称矩阵
+            dp_dtf << R_Li_I * R_IG, -R_Li_I * p_feat_I_x;
 
             // 计算光度误差，参见论文中的公式 (7)
-            double z_pho =  getSubPixelValue<float>(img, uv_i(0), uv_i(1)) - 
-                feature_manager->features()[j].intensities[l];
+            double z_pho = getSubPixelValue<float>(img, uv_i(0), uv_i(1)) -
+                           feature_manager->features()[j].intensities[l];
 
             // 记录结果
-            int row_idx = j*n_patch + l;
+            int row_idx = j * n_patch + l;
             h_terms(row_idx) = z_pho;
-            h_x_terms.block<1, 6>(row_idx,0) = dI_du * du_dp * dp_dtf;  // 雅可比矩阵的贡献
-            px_selected[l] = true;  // 标记当前像素为有效
+            h_x_terms.block<1, 6>(row_idx, 0) = dI_du * du_dp * dp_dtf; // 雅可比矩阵的贡献
+            px_selected[l] = true;                                      // 标记当前像素为有效
         }
 
         // 如果整个补丁都在视野内，则将其加入到最终结果中
-        if (is_fov) {
-            for (size_t t_idx = 0u; t_idx < px_selected.size(); ++t_idx) {
-                if (px_selected[t_idx]) {
-                    term_selected[j*n_patch + t_idx] = true;  // 标记补丁中的有效项
+        if (is_fov)
+        {
+            for (size_t t_idx = 0u; t_idx < px_selected.size(); ++t_idx)
+            {
+                if (px_selected[t_idx])
+                {
+                    term_selected[j * n_patch + t_idx] = true; // 标记补丁中的有效项
                 }
             }
-        } 
+        }
     }
 
     // 将计算结果存入ekfom_data
     int px_count = 0;
-    for (size_t t_idx = 0u; t_idx < term_selected.size(); ++t_idx) {
-        if (term_selected[t_idx]) {
+    for (size_t t_idx = 0u; t_idx < term_selected.size(); ++t_idx)
+    {
+        if (term_selected[t_idx])
+        {
             ekfom_data.h(px_count) = h_terms(t_idx);
-            ekfom_data.h_x.block<1, 6>(px_count,0) = h_x_terms.block<1, 6>(t_idx,0);
+            ekfom_data.h_x.block<1, 6>(px_count, 0) = h_x_terms.block<1, 6>(t_idx, 0);
             px_count += 1;
         }
     }
@@ -810,101 +841,105 @@ void h_share_combined(state_ikfom &s, esekfom::dyn_share_datastruct<double> &ekf
 {
     // 计算光度误差项
     esekfom::dyn_share_datastruct<double> ekfom_data_photo;
-    timing::Timer photo_timer("update/photometric");  // 开始计时光度误差的计算
-    h_share_model_photometric(s, ekfom_data_photo);   // 调用光度模型计算函数
-    photo_timer.Stop();  // 停止计时
+    timing::Timer photo_timer("update/photometric"); // 开始计时光度误差的计算
+    h_share_model_photometric(s, ekfom_data_photo);  // 调用光度模型计算函数
+    photo_timer.Stop();                              // 停止计时
 
     // 计算几何误差项
-    esekfom::dyn_share_datastruct<double> ekfom_data_geo = ekfom_data;  // 创建一个副本，用于几何误差的计算
-    timing::Timer geo_timer("update/geometric");  // 开始计时几何误差的计算
-    h_share_model_geometric(s, ekfom_data_geo);   // 调用几何模型计算函数
-    geo_timer.Stop();  // 停止计时
+    esekfom::dyn_share_datastruct<double> ekfom_data_geo = ekfom_data; // 创建一个副本，用于几何误差的计算
+    timing::Timer geo_timer("update/geometric");                       // 开始计时几何误差的计算
+    h_share_model_geometric(s, ekfom_data_geo);                        // 调用几何模型计算函数
+    geo_timer.Stop();                                                  // 停止计时
 
     // 计算总的误差项数：光度误差和几何误差项的总和
     int n_terms = ekfom_data_photo.h.rows() + ekfom_data_geo.h.rows();
 
-    if (ekfom_data_photo.h.rows() > 0) {  // 如果光度误差项存在
-        float lambda = photo_scale;  // 光度误差的缩放因子
+    if (ekfom_data_photo.h.rows() > 0)
+    {                               // 如果光度误差项存在
+        float lambda = photo_scale; // 光度误差的缩放因子
 
         // 合并光度误差项和几何误差项
-        ekfom_data.h_x = Eigen::MatrixXd::Zero(n_terms, 12);  // 初始化增量矩阵
-        ekfom_data.h_x << ekfom_data_photo.h_x * lambda, ekfom_data_geo.h_x;  // 拼接增量矩阵
-        ekfom_data.h = Eigen::VectorXd::Zero(n_terms);  // 初始化误差向量
-        ekfom_data.h << ekfom_data_photo.h * lambda, ekfom_data_geo.h;  // 拼接误差向量
-    } else {  // 如果光度误差项不存在
-        ekfom_data.h_x = ekfom_data_geo.h_x;  // 只保留几何误差项
-        ekfom_data.h = ekfom_data_geo.h;  // 只保留几何误差项
+        ekfom_data.h_x = Eigen::MatrixXd::Zero(n_terms, 12);                 // 初始化增量矩阵
+        ekfom_data.h_x << ekfom_data_photo.h_x * lambda, ekfom_data_geo.h_x; // 拼接增量矩阵
+        ekfom_data.h = Eigen::VectorXd::Zero(n_terms);                       // 初始化误差向量
+        ekfom_data.h << ekfom_data_photo.h * lambda, ekfom_data_geo.h;       // 拼接误差向量
+    }
+    else
+    {                                        // 如果光度误差项不存在
+        ekfom_data.h_x = ekfom_data_geo.h_x; // 只保留几何误差项
+        ekfom_data.h = ekfom_data_geo.h;     // 只保留几何误差项
     }
 
     // 保存几何误差的增量矩阵的前三列，用于后续处理
-    if (ekfom_data_geo.h_x.rows() > 0) {
-        h_geo_last = ekfom_data_geo.h_x.leftCols(3);  // 保存几何误差的前三列
-    } else {
-        h_geo_last.resize(0, 0);  // 如果没有几何误差，清空
+    if (ekfom_data_geo.h_x.rows() > 0)
+    {
+        h_geo_last = ekfom_data_geo.h_x.leftCols(3); // 保存几何误差的前三列
+    }
+    else
+    {
+        h_geo_last.resize(0, 0); // 如果没有几何误差，清空
     }
 
     // 如果总的误差项数为零，表示没有有效的数据，标记为无效
-    if (n_terms == 0) {
+    if (n_terms == 0)
+    {
         ekfom_data.valid = false;
     }
 }
 
-void log_fancy(double current_time_s, double length, int n_uninformative, int n_effective_points, int n_features, 
-    int n_removed, int n_added, const std::string& coin) {
+void log_fancy(double current_time_s, double length, int n_uninformative, int n_effective_points, int n_features,
+               int n_removed, int n_added, const std::string &coin)
+{
 
-    std::cout<<"\033[2J\033[1;1H"; //clear screen
-    std::cout<<"\033[33m" << coin <<std::endl; 
-    std::cout<<"\033[0m"; 
+    std::cout << "\033[2J\033[1;1H"; // clear screen
+    std::cout << "\033[33m" << coin << std::endl;
+    std::cout << "\033[0m";
 
     std::time_t current_time = current_time_s;
     double elapsed_time = current_time_s - first_lidar_time;
-    std::string asc_time = std::asctime(std::localtime(&current_time)); asc_time.pop_back();
+    std::string asc_time = std::asctime(std::localtime(&current_time));
+    asc_time.pop_back();
     std::cout << "| " << std::left << asc_time;
     std::cout << std::right << std::setfill(' ') << std::setw(35)
-    << "Elapsed Time: " + string_from_double(elapsed_time) + " seconds "
-    << "|" << std::endl;
+              << "Elapsed Time: " + string_from_double(elapsed_time) + " seconds "
+              << "|" << std::endl;
 
     std::cout << "|------------------------------------------------------------|" << std::endl;
 
     std::cout << "| " << std::left << std::setfill(' ') << std::setw(59)
-    << "Position (x,y,z)    [m] : " + string_from_double(state_point.pos(0)) + " " 
-    + string_from_double(state_point.pos(1)) + " " + string_from_double(state_point.pos(2)) 
-    << "|" << std::endl;
+              << "Position (x,y,z)    [m] : " + string_from_double(state_point.pos(0)) + " " + string_from_double(state_point.pos(1)) + " " + string_from_double(state_point.pos(2))
+              << "|" << std::endl;
 
     const Eigen::Quaterniond q(geoQuat.w, geoQuat.x, geoQuat.y, geoQuat.z);
     Eigen::Vector3d euler = q.toRotationMatrix().eulerAngles(0, 1, 2);
     euler *= 180.0 / M_PI;
 
     std::cout << "| " << std::left << std::setfill(' ') << std::setw(60)
-    << "Orientation (r,p,y) [°] : " + string_from_double(euler(0)) + " " 
-    + string_from_double(euler(1)) + " " + string_from_double(euler(2)) << "|" << std::endl;
+              << "Orientation (r,p,y) [°] : " + string_from_double(euler(0)) + " " + string_from_double(euler(1)) + " " + string_from_double(euler(2)) << "|" << std::endl;
 
     std::cout << "| " << std::left << std::setfill(' ') << std::setw(59)
-    << "Trajectory Length   [m] : " + string_from_double(length) << "|" << std::endl;
+              << "Trajectory Length   [m] : " + string_from_double(length) << "|" << std::endl;
 
     std::cout << "|------------------------------------------------------------|" << std::endl;
 
+    std::cout << "| " << std::left << std::setfill(' ') << std::setw(59)
+              << "Acc. Bias (x,y,z) [m/s2]  : " + string_from_double(state_point.ba(0)) + " " + string_from_double(state_point.ba(1)) + " " + string_from_double(state_point.ba(2)) << "|" << std::endl;
 
     std::cout << "| " << std::left << std::setfill(' ') << std::setw(59)
-    << "Acc. Bias (x,y,z) [m/s2]  : " + string_from_double(state_point.ba(0)) + " " 
-    + string_from_double(state_point.ba(1)) + " " + string_from_double(state_point.ba(2)) << "|" << std::endl;
+              << "Gyro Bias (x,y,z) [rad/s] : " + string_from_double(state_point.bg(0)) + " " + string_from_double(state_point.bg(1)) + " " + string_from_double(state_point.bg(2)) << "|" << std::endl;
 
-    std::cout << "| " << std::left << std::setfill(' ') << std::setw(59)
-    << "Gyro Bias (x,y,z) [rad/s] : " + string_from_double(state_point.bg(0)) + " " 
-    + string_from_double(state_point.bg(1)) + " " + string_from_double(state_point.bg(2)) << "|" << std::endl;
-   
     std::cout << "|------------------------------------------------------------|" << std::endl;
 
     std::cout << "| " << std::left << std::setfill(' ') << std::setw(26)
-    << "Effective Points    [#] : " <<  std::left << std::setw(33) << n_effective_points << "|" << std::endl;
+              << "Effective Points    [#] : " << std::left << std::setw(33) << n_effective_points << "|" << std::endl;
 
     std::cout << "| " << std::left << std::setfill(' ') << std::setw(26)
-    << "Intensity Features  [#] : " << std::left << std::setw(6) << n_features << std::left << std::setw(13) 
-    << " Added: " + std::to_string(n_added) << std::left << std::setw(14)<< " Removed: " + std::to_string(n_removed) 
-    << "|" << std::endl;
+              << "Intensity Features  [#] : " << std::left << std::setw(6) << n_features << std::left << std::setw(13)
+              << " Added: " + std::to_string(n_added) << std::left << std::setw(14) << " Removed: " + std::to_string(n_removed)
+              << "|" << std::endl;
 
     std::cout << "| " << std::left << std::setfill(' ') << std::setw(26)
-    << "Uninformative Dir.  [#] : " << std::left << std::setw(33) << n_uninformative << "|" << std::endl;
+              << "Uninformative Dir.  [#] : " << std::left << std::setw(33) << n_uninformative << "|" << std::endl;
 
     std::cout << "|------------------------------------------------------------|" << std::endl;
 
@@ -912,12 +947,12 @@ void log_fancy(double current_time_s, double length, int n_uninformative, int n_
     double min_s = timing::Timing::GetMinSeconds("all");
     double max_s = timing::Timing::GetMaxSeconds("all");
     std::cout << "| " << std::left << std::setfill(' ') << std::setw(26)
-    << "Computation Time    [s] : " << std::left << "Avg: " << string_from_double(mean_s) << std::left 
-    << " Max: " << string_from_double(max_s)  << std::left << " Min: " << string_from_double(min_s) 
-    << " |" << std::endl;
+              << "Computation Time    [s] : " << std::left << "Avg: " << string_from_double(mean_s) << std::left
+              << " Max: " << string_from_double(max_s) << std::left << " Min: " << string_from_double(min_s)
+              << " |" << std::endl;
 }
 
-int main(int argc, char** argv)
+int main(int argc, char **argv)
 {
     ros::init(argc, argv, "laserMapping");
     ros::NodeHandle nh;
@@ -933,14 +968,15 @@ int main(int argc, char** argv)
     std::vector<std::string> seglist;
     std::string current;
     std::string line;
-    int count = 0 ;
+    int count = 0;
     while (std::getline(buffer, line))
     {
         count++;
         current.append("                ");
         current.append(line);
         current.append("\n");
-        if (count % 15 == 0) {
+        if (count % 15 == 0)
+        {
             seglist.push_back(current);
             current = "";
         }
@@ -953,8 +989,8 @@ int main(int argc, char** argv)
     int n_uninformative;
 
     // Common Params
-    nh.param<string>("common/lid_topic",lid_topic,"/ouster/points");
-    nh.param<string>("common/imu_topic", imu_topic,"/ouster/imu");
+    nh.param<string>("common/lid_topic", lid_topic, "/ouster/points");
+    nh.param<string>("common/imu_topic", imu_topic, "/ouster/imu");
     nh.param<bool>("common/time_sync_en", time_sync_en, false);
 
     // Filter Params
@@ -967,11 +1003,11 @@ int main(int argc, char** argv)
     // Mapping Params
     nh.param<bool>("mapping/extrinsic_est_en", extrinsic_est_en, true);
     nh.param<int>("mapping/point_filter_num", point_filter_num, 4);
-    nh.param<double>("mapping/det_range",DET_RANGE, 300.f);
-    nh.param<double>("mapping/cube_side_length",cube_len, 200);
-    nh.param<double>("mapping/filter_size_map",filter_size_map_min,0.5);
-    nh.param<double>("mapping/filter_size_surf",filter_size_surf_min,0.5);
-    nh.param<double>("mapping/fov_degree",fov_deg, 180);
+    nh.param<double>("mapping/det_range", DET_RANGE, 300.f);
+    nh.param<double>("mapping/cube_side_length", cube_len, 200);
+    nh.param<double>("mapping/filter_size_map", filter_size_map_min, 0.5);
+    nh.param<double>("mapping/filter_size_surf", filter_size_surf_min, 0.5);
+    nh.param<double>("mapping/fov_degree", fov_deg, 180);
     nh.param<double>("mapping/gyr_cov", gyr_cov, 0.1);
     nh.param<double>("mapping/acc_cov", acc_cov, 0.1);
     nh.param<double>("mapping/b_gyr_cov", b_gyr_cov, 0.0001);
@@ -988,11 +1024,14 @@ int main(int argc, char** argv)
     nh.param<double>("preprocess/blind", p_pre->blind, 0.01);
     std::vector<double> lidar_to_sensor;
     bool transform_found = nh.getParam("/lidar_to_sensor_transform", lidar_to_sensor) ||
-        nh.getParam("/lidar_intrinsics/lidar_to_sensor_transform", lidar_to_sensor);
-    if (!transform_found || lidar_to_sensor.size() != 16) {
+                           nh.getParam("/lidar_intrinsics/lidar_to_sensor_transform", lidar_to_sensor);
+    if (!transform_found || lidar_to_sensor.size() != 16)
+    {
         ROS_WARN("No lidar to sensor transform found, setting to default value.");
         p_pre->lidar_sensor_z_offset = 0.03618;
-    } else {
+    }
+    else
+    {
         p_pre->lidar_sensor_z_offset = lidar_to_sensor[11] * 0.001;
     }
 
@@ -1006,23 +1045,23 @@ int main(int argc, char** argv)
     projector = std::make_shared<Projector>(nh);
     feature_manager = std::make_shared<FeatureManager>(nh, projector);
     image_processor = std::make_shared<ImageProcessor>(nh, projector, feature_manager);
-    path.header.stamp    = ros::Time::now();
-    path.header.frame_id ="camera_init";
+    path.header.stamp = ros::Time::now();
+    path.header.frame_id = "camera_init";
 
     /*** variables definition ***/
     FOV_DEG = (fov_deg + 10.0) > 179.9 ? 179.9 : (fov_deg + 10.0);
     double trajectory_length = 0.0;
     V3D t_G_I = V3D::Zero();
-    
+
     memset(point_selected_surf, true, sizeof(point_selected_surf));
     downSizeFilterSurf.setLeafSize(filter_size_surf_min, filter_size_surf_min, filter_size_surf_min);
     downSizeFilterMap.setLeafSize(filter_size_map_min, filter_size_map_min, filter_size_map_min);
     memset(point_selected_surf, true, sizeof(point_selected_surf));
 
-    Lidar_T_wrt_IMU<<VEC_FROM_ARRAY(extrinT);
-    Lidar_R_wrt_IMU<<MAT_FROM_ARRAY(extrinR);
-    T_IL.block<3,3>(0,0) = Lidar_R_wrt_IMU;
-    T_IL.block<3,1>(0,3) = Lidar_T_wrt_IMU;
+    Lidar_T_wrt_IMU << VEC_FROM_ARRAY(extrinT);
+    Lidar_R_wrt_IMU << MAT_FROM_ARRAY(extrinR);
+    T_IL.block<3, 3>(0, 0) = Lidar_R_wrt_IMU;
+    T_IL.block<3, 1>(0, 3) = Lidar_T_wrt_IMU;
     p_imu->set_extrinsic(Lidar_T_wrt_IMU, Lidar_R_wrt_IMU);
     p_imu->set_gyr_cov(V3D(gyr_cov, gyr_cov, gyr_cov));
     p_imu->set_acc_cov(V3D(acc_cov, acc_cov, acc_cov));
@@ -1030,9 +1069,9 @@ int main(int argc, char** argv)
     p_imu->set_acc_bias_cov(V3D(b_acc_cov, b_acc_cov, b_acc_cov));
 
     double epsi[23] = {0.001};
-    fill(epsi, epsi+23, eps);
+    fill(epsi, epsi + 23, eps);
     kf.init_dyn_share(get_f, df_dx, df_dw, h_share_combined, NUM_MAX_ITERATIONS, epsi);
-    
+
     int iter_step = 0;
     cv::Mat colorized_feature_img;
 
@@ -1042,31 +1081,33 @@ int main(int argc, char** argv)
     ros::Publisher pubLaserCloudFull_body = nh.advertise<sensor_msgs::PointCloud2>("/cloud_registered_body", 100000);
     ros::Publisher pubLaserCloudEffect = nh.advertise<sensor_msgs::PointCloud2>("/cloud_effected", 100000);
     ros::Publisher pubLaserCloudMap = nh.advertise<sensor_msgs::PointCloud2>("/Laser_map", 100000);
-    ros::Publisher pubPath          = nh.advertise<nav_msgs::Path>("/path", 100000);
-    
+    ros::Publisher pubPath = nh.advertise<nav_msgs::Path>("/path", 100000);
+
     ros::Publisher intensity_publisher = nh.advertise<sensor_msgs::Image>("/filtered_image", 2000);
     ros::Publisher feature_publisher = nh.advertise<sensor_msgs::Image>("/feature_image", 2000);
     ros::Publisher previous_feature_publisher;
     ros::Publisher predicted_feature_publisher;
     ros::Publisher feature_marker_publisher;
-    if (debug) {
+    if (debug)
+    {
         previous_feature_publisher = nh.advertise<sensor_msgs::Image>("/previous_feature_image", 2000);
         predicted_feature_publisher = nh.advertise<sensor_msgs::Image>("/predicted_feature_image", 2000);
         feature_marker_publisher = nh.advertise<visualization_msgs::Marker>("/feature_markers", 2000);
-    } 
-    
+    }
+
     ros::Subscriber sub_pcl = nh.subscribe(lid_topic, 200000, standard_pcl_cbk);
     ros::Subscriber sub_imu = nh.subscribe(imu_topic, 200000, imu_cbk);
 
-//------------------------------------------------------------------------------------------------------
+    //------------------------------------------------------------------------------------------------------
     ros::AsyncSpinner spinner(0);
     spinner.start();
 
     bool status = ros::ok();
     while (status)
     {
-        if (flg_exit) break;
-        if(sync_packages(Measures))
+        if (flg_exit)
+            break;
+        if (sync_packages(Measures))
         {
             if (flg_first_scan)
             {
@@ -1082,14 +1123,13 @@ int main(int argc, char** argv)
 
             feats_undistort = Measures.lidar;
             std::vector<M4D> vec_T_Li_Lk;
-            std::vector<int> vec_idx(Measures.lidar->points.size(),0);
-
+            std::vector<int> vec_idx(Measures.lidar->points.size(), 0);
 
             // Predict state using forward integration of IMU measurements and undistort the lidar points
             timing::Timer undistort_timer("pre/undistort");
             p_imu->Process(Measures, kf, feats_undistort, vec_T_Li_Lk, vec_idx);
             undistort_timer.Stop();
-           
+
             if (feats_undistort->empty() || (feats_undistort == NULL) || vec_T_Li_Lk.empty())
             {
                 timing::Timing::Reset();
@@ -1113,33 +1153,36 @@ int main(int argc, char** argv)
             sensor_msgs::ImagePtr img_msg =
                 cv_bridge::CvImage(header, "mono8", current_frame.img_photo_u8).toImageMsg();
             intensity_publisher.publish(img_msg);
-            
-            if (debug && (!colorized_feature_img.empty())) {
+
+            if (debug && (!colorized_feature_img.empty()))
+            {
                 // Visualized feature position predicted by IMU integration
                 M4D T_GI = M4D::Identity();
-                T_GI.block<3,3>(0,0) = state_point.rot.toRotationMatrix();
-                T_GI.block<3,1>(0,3) = state_point.pos;
-                M3D R_IG = T_GI.block<3,3>(0,0).transpose();
+                T_GI.block<3, 3>(0, 0) = state_point.rot.toRotationMatrix();
+                T_GI.block<3, 1>(0, 3) = state_point.pos;
+                M3D R_IG = T_GI.block<3, 3>(0, 0).transpose();
 
                 M4D T_GL = T_GI * T_IL;
                 M4D T_LG = M4D::Identity();
-                T_LG.block<3,3>(0,0) = T_GL.block<3,3>(0,0).transpose();
-                T_LG.block<3,1>(0,3) = -T_GL.block<3,3>(0,0).transpose() * T_GL.block<3,1>(0,3);
+                T_LG.block<3, 3>(0, 0) = T_GL.block<3, 3>(0, 0).transpose();
+                T_LG.block<3, 1>(0, 3) = -T_GL.block<3, 3>(0, 0).transpose() * T_GL.block<3, 1>(0, 3);
 
-                M3D R_LG = T_LG.block<3,3>(0,0);
-                V3D p_LG = T_LG.block<3,1>(0,3);
+                M3D R_LG = T_LG.block<3, 3>(0, 0);
+                V3D p_LG = T_LG.block<3, 1>(0, 3);
                 cv::Mat predicted_feature_img;
                 cv::cvtColor(current_frame.img_photo_u8, predicted_feature_img, CV_GRAY2RGB);
                 int patch_size = feature_manager->patchSize();
-                int center_idx = int(patch_size * patch_size) / 2; 
-                for (auto feature : feature_manager->features()) {
-                    const V3D& p_feat_G = feature.p[center_idx];
+                int center_idx = int(patch_size * patch_size) / 2;
+                for (auto feature : feature_manager->features())
+                {
+                    const V3D &p_feat_G = feature.p[center_idx];
                     V3D p_feat_Lk = R_LG * p_feat_G + p_LG;
                     V3D p_feat_Li;
                     V2D uv_i;
                     int distortion_idx;
-                    if(!projector->projectUndistortedPoint(current_frame, p_feat_Lk, p_feat_Li, uv_i, distortion_idx, 
-                        true)) {
+                    if (!projector->projectUndistortedPoint(current_frame, p_feat_Lk, p_feat_Li, uv_i, distortion_idx,
+                                                            true))
+                    {
                         continue;
                     };
                     cv::circle(predicted_feature_img, cv::Point2f(uv_i(0), uv_i(1)), 5, cv::Scalar(0, 185, 255.0), 2);
@@ -1154,15 +1197,15 @@ int main(int argc, char** argv)
                 previous_feature_publisher.publish(feat_prev_msg);
             }
 
-
             flg_EKF_inited = (Measures.lidar_beg_time - first_lidar_time) < INIT_TIME ? false : true;
-            // Segment the map in lidar FOV 
+            // Segment the map in lidar FOV
             lasermap_fov_segment();
 
             // Downsample points by skipping
             PointCloudXYZI::Ptr feats_undistort_skip(new PointCloudXYZI());
-            feats_undistort_skip->reserve(feats_undistort->points.size()/point_filter_num);
-            for (size_t idx = 0u; idx < feats_undistort->points.size(); idx += point_filter_num) {
+            feats_undistort_skip->reserve(feats_undistort->points.size() / point_filter_num);
+            for (size_t idx = 0u; idx < feats_undistort->points.size(); idx += point_filter_num)
+            {
                 feats_undistort_skip->points.push_back(feats_undistort->points[idx]);
             }
 
@@ -1170,17 +1213,17 @@ int main(int argc, char** argv)
             downSizeFilterSurf.setInputCloud(feats_undistort_skip);
             downSizeFilterSurf.filter(*feats_down_body);
             feats_down_size = feats_down_body->points.size();
-            
+
             pre_timer.Stop();
 
             // Initialize the map kdtree
-            if(ikdtree.Root_Node == nullptr)
+            if (ikdtree.Root_Node == nullptr)
             {
-                if(feats_down_size > 5)
+                if (feats_down_size > 5)
                 {
                     ikdtree.set_downsample_param(filter_size_map_min);
                     feats_down_world->resize(feats_down_size);
-                    for(int i = 0; i < feats_down_size; i++)
+                    for (int i = 0; i < feats_down_size; i++)
                     {
                         pointBodyToWorld(&(feats_down_body->points[i]), &(feats_down_world->points[i]));
                     }
@@ -1199,7 +1242,7 @@ int main(int argc, char** argv)
             feats_down_world->resize(feats_down_size);
             Nearest_Points.resize(feats_down_size);
 
-            // Iterated State Update       
+            // Iterated State Update
             timing::Timer update_timer("update");
             double solve_H_time;
             kf.update_iterated_dyn_share_modified(geo_std, solve_H_time);
@@ -1208,55 +1251,61 @@ int main(int argc, char** argv)
             timing::Timer feature_timer("features");
             // Identify uninformative directions
             std::vector<V3D> weak_directions_g;
-            if (h_geo_last.rows() > 3) {
+            if (h_geo_last.rows() > 3)
+            {
                 auto eig_vec = calculateEigenVectors(h_geo_last);
                 V3D contribs_pos = calculateContributions(h_geo_last, eig_vec);
 
-                for (int idx = 0; idx < 3; ++idx) {
-                    if (contribs_pos(idx) < n_uninformative) {
+                for (int idx = 0; idx < 3; ++idx)
+                {
+                    if (contribs_pos(idx) < n_uninformative)
+                    {
                         weak_directions_g.push_back(eig_vec.col(idx));
                     }
                 }
             }
-            
+
             state_point = kf.get_x();
             M4D T_GI = M4D::Identity();
-            T_GI.block<3,3>(0,0) = state_point.rot.toRotationMatrix();
-            T_GI.block<3,1>(0,3) = state_point.pos;
+            T_GI.block<3, 3>(0, 0) = state_point.rot.toRotationMatrix();
+            T_GI.block<3, 1>(0, 3) = state_point.pos;
 
             // Rotate uninformative directions to lidar frame
             std::vector<V3D> weak_directions_l;
             const M4D T_GL = T_GI * T_IL;
-            for (const auto& vec : weak_directions_g) {
-                weak_directions_l.push_back(T_GL.block<3,3>(0,0).transpose()*vec);
+            for (const auto &vec : weak_directions_g)
+            {
+                weak_directions_l.push_back(T_GL.block<3, 3>(0, 0).transpose() * vec);
             }
 
             // If no uninformative directions are found, use the default ones
-            if (weak_directions_l.empty()) {
-                weak_directions_l.push_back(V3D(1,0,0));
-                weak_directions_l.push_back(V3D(0,1,0));
-                weak_directions_l.push_back(V3D(0,0,1));
+            if (weak_directions_l.empty())
+            {
+                weak_directions_l.push_back(V3D(1, 0, 0));
+                weak_directions_l.push_back(V3D(0, 1, 0));
+                weak_directions_l.push_back(V3D(0, 0, 1));
             }
 
             // Track features with updated state and initialize new ones
             feature_manager->updateFeatures(current_frame, weak_directions_l, T_GL);
             feature_timer.Stop();
 
-
             // Publish feature image
             cv::cvtColor(current_frame.img_photo_u8, colorized_feature_img, CV_GRAY2RGB);
-            for (int j = 0; j < feature_manager->features().size(); j++) {
-                const V2D& uv = feature_manager->features()[j].center;
+            for (int j = 0; j < feature_manager->features().size(); j++)
+            {
+                const V2D &uv = feature_manager->features()[j].center;
                 cv::circle(colorized_feature_img, cv::Point2f(uv(0), uv(1)), 5, cv::Scalar(71, 215, 253), 2);
             }
             sensor_msgs::ImagePtr feat_img_msg =
                 cv_bridge::CvImage(current_frame.header, "bgr8", colorized_feature_img).toImageMsg();
             feature_publisher.publish(feat_img_msg);
 
-            if (debug) {
+            if (debug)
+            {
                 visualization_msgs::Marker marker;
                 int patch_size = feature_manager->patchSize();
-                int center_idx = int(patch_size * patch_size) / 2; 
+                int center_idx = int(patch_size * patch_size) / 2;
                 marker.header.frame_id = "camera_init";
                 marker.header.stamp = current_frame.header.stamp;
                 marker.ns = "feature";
@@ -1269,16 +1318,17 @@ int main(int argc, char** argv)
                 marker.scale.x = 0.01;
                 marker.scale.x = 0.01;
                 marker.color.a = 0.25;
-                marker.color.r = 253./255.;
-                marker.color.g = 215./255.;
-                marker.color.b = 71./255.;
+                marker.color.r = 253. / 255.;
+                marker.color.g = 215. / 255.;
+                marker.color.b = 71. / 255.;
                 geometry_msgs::Point p_imu;
                 p_imu.x = state_point.pos(0);
                 p_imu.y = state_point.pos(1);
                 p_imu.z = state_point.pos(2);
 
-                for (int j = 0; j < feature_manager->features().size(); j++) {
-                    const V3D& p_G = feature_manager->features()[j].p[center_idx];
+                for (int j = 0; j < feature_manager->features().size(); j++)
+                {
+                    const V3D &p_G = feature_manager->features()[j].p[center_idx];
                     geometry_msgs::Point p_feat;
                     p_feat.x = p_G(0);
                     p_feat.y = p_G(1);
@@ -1295,30 +1345,35 @@ int main(int argc, char** argv)
             geoQuat.z = state_point.rot.coeffs()[2];
             geoQuat.w = state_point.rot.coeffs()[3];
 
-            // Publish odometry 
+            // Publish odometry
             publish_odometry(pubOdomAftMapped);
 
             // Add points to map kdtree
             map_incremental();
 
             // Publish points
-            if (path_en) publish_path(pubPath);
-            if (scan_pub_en || pcd_save_en)      publish_frame_world(pubLaserCloudFull);
-            if (scan_pub_en && scan_body_pub_en) publish_frame_body(pubLaserCloudFull_body);
+            if (path_en)
+                publish_path(pubPath);
+            if (scan_pub_en || pcd_save_en)
+                publish_frame_world(pubLaserCloudFull);
+            if (scan_pub_en && scan_body_pub_en)
+                publish_frame_body(pubLaserCloudFull_body);
 
             full_cycle_timer.Stop();
 
-            if (dashboard) {
-                double segment_length = (T_GI.block<3,1>(0,3) - t_G_I).norm();
-                t_G_I = T_GI.block<3,1>(0,3);
+            if (dashboard)
+            {
+                double segment_length = (T_GI.block<3, 1>(0, 3) - t_G_I).norm();
+                t_G_I = T_GI.block<3, 1>(0, 3);
                 trajectory_length += segment_length;
-                log_fancy(Measures.lidar_end_time, trajectory_length, weak_directions_g.size(),h_geo_last.rows(), 
-                    feature_manager->features().size(), feature_manager->nAdded(), feature_manager->nRemoved(), 
-                    seglist[iter_step % seglist.size()]);
+                log_fancy(Measures.lidar_end_time, trajectory_length, weak_directions_g.size(), h_geo_last.rows(),
+                          feature_manager->features().size(), feature_manager->nAdded(), feature_manager->nRemoved(),
+                          seglist[iter_step % seglist.size()]);
             }
             iter_step++;
-        } 
-        else {
+        }
+        else
+        {
             sleep(0.0005);
         }
         status = ros::ok();
@@ -1331,15 +1386,15 @@ int main(int argc, char** argv)
     {
         string file_name = string("scans.pcd");
         string pcd_dir = string(ROOT_DIR) + "PCD/";
-        bool directory_exists = boost::filesystem::exists(pcd_dir) && 
-            boost::filesystem::is_directory(pcd_dir);
+        bool directory_exists = boost::filesystem::exists(pcd_dir) &&
+                                boost::filesystem::is_directory(pcd_dir);
         if (!directory_exists)
         {
             boost::filesystem::create_directory(pcd_dir);
         }
         string all_points_dir(pcd_dir + file_name);
         pcl::PCDWriter pcd_writer;
-        cout << "current scan saved to " << all_points_dir <<endl;
+        cout << "current scan saved to " << all_points_dir << endl;
         pcd_writer.writeBinary(all_points_dir, *pcl_wait_save);
     }
     return 0;
